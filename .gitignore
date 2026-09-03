@@ -1,4 +1,5 @@
 node_modules/
+.next/
 candidates.json
 *.log
-.next/
+storage/

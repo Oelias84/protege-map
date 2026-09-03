@@ -86,6 +86,8 @@ export async function getPlan(id: string): Promise<PlanRow | null> {
 }
 
 export interface NewPlan {
+  /** optional client-generated UUID so asset paths are known before insert */
+  id?: string;
   name: string;
   sourcePdfPath: string;
   imagePath: string;
@@ -123,9 +125,10 @@ export async function createPlan(
     await client.query("begin");
 
     const planRes = await client.query(
-      `insert into plan (name, source_pdf_path, image_path, image_width, image_height, render_dpi, legend_rect)
-       values ($1,$2,$3,$4,$5,$6,$7) returning *`,
+      `insert into plan (id, name, source_pdf_path, image_path, image_width, image_height, render_dpi, legend_rect)
+       values (coalesce($1, gen_random_uuid()), $2,$3,$4,$5,$6,$7,$8) returning *`,
       [
+        input.id ?? null,
         input.name,
         input.sourcePdfPath,
         input.imagePath,

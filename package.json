@@ -7,7 +7,11 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "probe": "tsx scripts/probe-plan.mts"
+    "probe": "tsx scripts/probe-plan.mts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "cp -f node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/ 2>/dev/null || true"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +19,7 @@
   "description": "",
   "dependencies": {
     "next": "^15.5.25",
+    "openseadragon": "^6.1.0",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",
     "react": "^19.2.8",
@@ -22,9 +27,10 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
+    "@types/openseadragon": "^5.0.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^5.9.3"
   }
 }
