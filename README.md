@@ -5,16 +5,32 @@ place a tappable, movable button for every symbol instance, attach data to each.
 
 - **Ingestion** runs in the browser (`pdf.js`) — see [lib/pipeline](lib/pipeline/README.md).
 - **Persistence** is Postgres + local files behind Next.js route handlers (this doc).
-- **UI** — authoring + viewer — is Stage 3 (not built yet).
+- **UI** — `/upload` (draw the legend box → enter symbol rows → ingest), `/authoring/[id]`
+  (place / move / relabel / delete buttons, publish), `/view/[id]` (pan-zoom, tap a
+  button to edit its data, drag to relocate).
 
 ## Setup
 
 ```bash
-npm install
+npm install                     # postinstall copies pdf.worker.min.mjs to public/
 cp .env.example .env            # set DATABASE_URL, STORAGE_DIR
+createdb plan_builder
 psql "$DATABASE_URL" -f db/schema.sql
-npm run dev
+npm run dev                     # http://localhost:3000
 ```
+
+## End-to-end flow
+
+1. `/upload` → pick the PDF → drag a box around the מקרא → paste one
+   `slug | Hebrew label | count` line per legend row → **Ingest**.
+   The browser renders DZI tiles, crops glyphs, runs detection, and `PUT`s every
+   asset, then redirects to authoring.
+2. `/authoring/[id]` → the auto-detected buttons are already on the plan. Fix
+   labels/types, drag misplaced ones, add missed (pick a legend row, click the
+   plan), delete false positives. The legend count column (found / BOQ) is the
+   checklist. **Publish** when done.
+3. `/view/[id]` → end users pan/zoom, tap a button for its `{ label, status, note }`,
+   drag to move it.
 
 ## Data model
 
