@@ -16,7 +16,10 @@ export default function UploadPage() {
   const [phase, setPhase] = useState<Phase>("pick");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [box, setBox] = useState<BBox | null>(null);
+  /** PDF page size in points — device space the pipeline works in */
+  const [pageSize, setPageSize] = useState<{ w: number; h: number }>({ w: 1, h: 1 });
+  /** legend box, stored as fractions of the page (0..1) so scaling never matters */
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [meta, setMeta] = useState("");
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState("");
@@ -27,9 +30,11 @@ export default function UploadPage() {
   const onPick = useCallback(async (f: File) => {
     setError("");
     setFile(f);
+    setBox(null);
     const pdfjs = await loadPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
     const page = await doc.getPage(1);
+    setPageSize({ w: page.getViewport({ scale: 1 }).width, h: page.getViewport({ scale: 1 }).height });
     const vp = page.getViewport({ scale: PREVIEW_SCALE });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(vp.width);
@@ -39,28 +44,44 @@ export default function UploadPage() {
     setPhase("legend");
   }, []);
 
-  const toDevice = (px: number, py: number): [number, number] => [
-    px / PREVIEW_SCALE,
-    py / PREVIEW_SCALE,
-  ];
+  /** pointer position -> fraction of the displayed image (0..1), scale-agnostic */
+  const frac = (e: React.PointerEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return {
+      fx: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+      fy: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
+    };
+  };
 
   function onDown(e: React.PointerEvent) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    dragRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const { fx, fy } = frac(e);
+    dragRef.current = { x: fx, y: fy };
     setBox(null);
   }
   function onMove(e: React.PointerEvent) {
     if (!dragRef.current) return;
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
-    const [x0, y0] = toDevice(Math.min(dragRef.current.x, x), Math.min(dragRef.current.y, y));
-    const [x1, y1] = toDevice(Math.max(dragRef.current.x, x), Math.max(dragRef.current.y, y));
-    setBox({ x0, y0, x1, y1 });
+    const { fx, fy } = frac(e);
+    setBox({
+      x0: Math.min(dragRef.current.x, fx),
+      y0: Math.min(dragRef.current.y, fy),
+      x1: Math.max(dragRef.current.x, fx),
+      y1: Math.max(dragRef.current.y, fy),
+    });
   }
   const onUp = () => {
     dragRef.current = null;
   };
+
+  /** legend box in device space (PDF points) */
+  const deviceBox = (): BBox | null =>
+    box && box.x1 - box.x0 > 0.01 && box.y1 - box.y0 > 0.01
+      ? {
+          x0: box.x0 * pageSize.w,
+          y0: box.y0 * pageSize.h,
+          x1: box.x1 * pageSize.w,
+          y1: box.y1 * pageSize.h,
+        }
+      : null;
 
   /** parse the optional label textarea; empty -> undefined (fully automatic) */
   function parseMeta(): SymbolMeta[] | undefined {
@@ -80,7 +101,8 @@ export default function UploadPage() {
   }
 
   async function run() {
-    if (!file || !box) return;
+    const legendRect = deviceBox();
+    if (!file || !legendRect) return;
     setPhase("working");
     setError("");
     setProgress(0);
@@ -88,14 +110,19 @@ export default function UploadPage() {
       const pdfjs = await loadPdfjs();
       setStep("reading legend & rendering tiles…");
       const draft = await ingestPdf(file, pdfjs, {
-        legendRect: box,
+        legendRect,
         symbolMeta: parseMeta(), // undefined => a symbol per legend row, auto
-        excludeRects: [box],
+        excludeRects: [legendRect],
         onOcrProgress: (d, t) => {
           setStep(`reading legend labels (OCR) ${d}/${t}…`);
           setProgress(Math.round((d / t) * 100));
         },
       });
+      if (!draft.symbols.length) {
+        throw new Error(
+          "No legend rows detected in that box. Draw it tighter around the מקרא table (the column of small symbols), then try again.",
+        );
+      }
       setStep("uploading assets…");
       setProgress(0);
       const bundle = await uploadPlan(draft, {
@@ -150,12 +177,13 @@ export default function UploadPage() {
               <div
                 style={{
                   position: "absolute",
-                  left: box.x0 * PREVIEW_SCALE,
-                  top: box.y0 * PREVIEW_SCALE,
-                  width: (box.x1 - box.x0) * PREVIEW_SCALE,
-                  height: (box.y1 - box.y0) * PREVIEW_SCALE,
+                  left: `${box.x0 * 100}%`,
+                  top: `${box.y0 * 100}%`,
+                  width: `${(box.x1 - box.x0) * 100}%`,
+                  height: `${(box.y1 - box.y0) * 100}%`,
                   border: "2px solid var(--accent)",
                   background: "rgba(37,99,235,0.12)",
+                  pointerEvents: "none",
                 }}
               />
             )}
@@ -183,7 +211,7 @@ export default function UploadPage() {
             <button className="btn" onClick={() => setPhase("pick")}>
               Back
             </button>
-            <button className="btn btn--primary" disabled={!box} onClick={run}>
+            <button className="btn btn--primary" disabled={!deviceBox()} onClick={run}>
               Ingest &amp; create buttons
             </button>
           </div>
