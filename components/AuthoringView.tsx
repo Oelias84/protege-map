@@ -101,30 +101,32 @@ export function AuthoringView({ bundle }: { bundle: PlanBundle }) {
           </Link>
         </div>
 
-        <PlanCanvas
-          planId={plan.id}
-          width={plan.imageWidth}
-          height={plan.imageHeight}
-          placements={placements}
-          symbols={symbols}
-          mode="author"
-          activeSymbolId={activeSymbolId}
-          onAddAt={addAt}
-          onMovePlacement={move}
-          onSelectPlacement={setSelectedId}
-          selectedPlacementId={selectedId}
-        />
-
-        {selected && (
-          <FieldEditor
-            placement={selected}
-            symbol={symbols.find((s) => s.id === selected.symbolId)}
+        <div className="workspace__stage">
+          <PlanCanvas
+            planId={plan.id}
+            width={plan.imageWidth}
+            height={plan.imageHeight}
+            placements={placements}
             symbols={symbols}
-            onSave={save}
-            onDelete={remove}
-            onClose={() => setSelectedId(null)}
+            mode="author"
+            activeSymbolId={activeSymbolId}
+            onAddAt={addAt}
+            onMovePlacement={move}
+            onSelectPlacement={setSelectedId}
+            selectedPlacementId={selectedId}
           />
-        )}
+
+          {selected && (
+            <FieldEditor
+              placement={selected}
+              symbol={symbols.find((s) => s.id === selected.symbolId)}
+              symbols={symbols}
+              onSave={save}
+              onDelete={remove}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
       </div>
 
       <LegendPanel

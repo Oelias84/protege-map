@@ -39,26 +39,28 @@ export function ViewerView({ bundle }: { bundle: PlanBundle }) {
           <span style={{ color: "var(--muted)" }}>{placements.length} points</span>
         </div>
 
-        <PlanCanvas
-          planId={plan.id}
-          width={plan.imageWidth}
-          height={plan.imageHeight}
-          placements={placements}
-          symbols={symbols}
-          mode="view"
-          onMovePlacement={move}
-          onSelectPlacement={setSelectedId}
-          selectedPlacementId={selectedId}
-        />
-
-        {selected && (
-          <FieldEditor
-            placement={selected}
-            symbol={symbols.find((s) => s.id === selected.symbolId)}
-            onSave={save}
-            onClose={() => setSelectedId(null)}
+        <div className="workspace__stage">
+          <PlanCanvas
+            planId={plan.id}
+            width={plan.imageWidth}
+            height={plan.imageHeight}
+            placements={placements}
+            symbols={symbols}
+            mode="view"
+            onMovePlacement={move}
+            onSelectPlacement={setSelectedId}
+            selectedPlacementId={selectedId}
           />
-        )}
+
+          {selected && (
+            <FieldEditor
+              placement={selected}
+              symbol={symbols.find((s) => s.id === selected.symbolId)}
+              onSave={save}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
       </div>
 
       <LegendPanel planId={plan.id} symbols={symbols} placements={placements} />

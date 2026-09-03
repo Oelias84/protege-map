@@ -27,15 +27,17 @@ a { color: var(--accent); }
 
 /* ---- workspace: canvas + legend side by side ---- */
 .workspace { display: grid; grid-template-columns: 1fr 320px; height: 100vh; }
-.workspace__main { position: relative; min-width: 0; }
+.workspace__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .workspace__bar {
-  position: absolute; z-index: 5; top: 12px; left: 12px; right: 12px;
+  flex: none; z-index: 5;
   display: flex; gap: 10px; align-items: center;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
   padding: 8px 12px;
 }
-.workspace__bar h1 { font-size: 14px; margin: 0; }
+.workspace__bar h1 { font-size: 14px; margin: 0; white-space: nowrap; }
 .workspace__spacer { flex: 1; }
+/* the canvas fills what's left below the bar; children position against this */
+.workspace__stage { position: relative; flex: 1; min-height: 0; }
 
 /* ---- OSD canvas + overlay ---- */
 .plan-canvas { position: absolute; inset: 0; }
@@ -89,7 +91,7 @@ a { color: var(--accent); }
 
 /* ---- field editor ---- */
 .editor {
-  position: absolute; z-index: 10; top: 64px; inset-inline-end: 12px; width: 280px;
+  position: absolute; z-index: 10; top: 12px; inset-inline-end: 12px; width: 280px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
 }
