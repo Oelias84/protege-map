@@ -66,6 +66,7 @@ export function PlanCanvas(props: PlanCanvasProps) {
       const maxLevel = Math.ceil(Math.log2(Math.max(width, height)));
       const viewer = OSD({
         element: hostRef.current,
+        prefixUrl: "/openseadragon-images/",
         showNavigationControl: true,
         navigatorPosition: "BOTTOM_RIGHT",
         showNavigator: mode === "author",

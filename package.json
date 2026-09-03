@@ -11,7 +11,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "postinstall": "cp -f node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/ 2>/dev/null || true"
+    "postinstall": "node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('public/openseadragon-images',{recursive:true});cpSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','public/pdf.worker.min.mjs');cpSync('node_modules/openseadragon/build/openseadragon/images','public/openseadragon-images',{recursive:true});\""
   },
   "keywords": [],
   "author": "",
