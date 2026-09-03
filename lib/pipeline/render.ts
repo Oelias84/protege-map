@@ -120,6 +120,27 @@ export async function buildDzi(
   return { descriptor, tiles, tileSize, overlap, width, height };
 }
 
+/** crop a device-space box out of the rendered page into its own canvas */
+export function cropRegion(
+  rendered: RenderedPage,
+  box: BBox,
+  { pad = 0, upscale = 1 }: { pad?: number; upscale?: number } = {},
+): HTMLCanvasElement | null {
+  const s = rendered.scale;
+  const x = Math.max(0, (box.x0 - pad) * s);
+  const y = Math.max(0, (box.y0 - pad) * s);
+  const w = Math.min(rendered.width - x, (box.x1 - box.x0 + 2 * pad) * s);
+  const h = Math.min(rendered.height - y, (box.y1 - box.y0 + 2 * pad) * s);
+  if (w < 1 || h < 1) return null;
+  const c = makeCanvas(Math.ceil(w * upscale), Math.ceil(h * upscale));
+  const ctx = c.getContext("2d", { alpha: false })!;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(rendered.canvas, x, y, w, h, 0, 0, c.width, c.height);
+  return c;
+}
+
 /** crop each legend glyph out of the rendered page (device coords × scale) */
 export async function cropGlyphs(
   rendered: RenderedPage,

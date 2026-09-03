@@ -12,6 +12,7 @@ import { extractVectors } from "./vectorExtract";
 import { segmentLegend } from "./legend";
 import { buildSignature } from "./signature";
 import { buildTemplates, detectPlacements } from "./detect";
+import { ocrLegendLabels } from "./ocr";
 import type { BBox, PlacementCandidate, SymbolDef } from "./types";
 
 /** operator-supplied metadata for each legend row, in row order */
@@ -34,6 +35,9 @@ export interface IngestOptions {
   targetDpi?: number;
   /** skip auto-detection; start the operator from a blank plan */
   skipDetect?: boolean;
+  /** OCR the legend description text into button names (default true when no labels given) */
+  ocr?: boolean;
+  onOcrProgress?: (done: number, total: number) => void;
 }
 
 export interface PlanDraft {
@@ -102,6 +106,21 @@ export async function ingestPdf(file: File, pdfjs: Pdfjs, opts: IngestOptions): 
     rows.map((r) => ({ rowIndex: r.rowIndex, box: r.glyphBBox })),
   );
   const glyphByRow = new Map(glyphs.map((g) => [g.rowIndex, g.blob]));
+
+  // fill blank labels from the legend text via OCR (rough — operator corrects inline)
+  const wantOcr = opts.ocr ?? !opts.symbolMeta;
+  if (wantOcr) {
+    try {
+      const labels = await ocrLegendLabels(rendered, rows, {
+        onProgress: opts.onOcrProgress,
+      });
+      meta.forEach((m, i) => {
+        if (!m.labelHe) m.labelHe = labels.get(i) ?? "";
+      });
+    } catch {
+      /* OCR is best-effort; fall back to generic names */
+    }
+  }
 
   return {
     id: crypto.randomUUID(),

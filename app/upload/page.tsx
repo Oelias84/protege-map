@@ -19,6 +19,7 @@ export default function UploadPage() {
   const [box, setBox] = useState<BBox | null>(null);
   const [meta, setMeta] = useState("");
   const [progress, setProgress] = useState(0);
+  const [step, setStep] = useState("");
   const [error, setError] = useState("");
 
   const dragRef = useRef<{ x: number; y: number } | null>(null);
@@ -85,11 +86,18 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const pdfjs = await loadPdfjs();
+      setStep("reading legend & rendering tiles…");
       const draft = await ingestPdf(file, pdfjs, {
         legendRect: box,
         symbolMeta: parseMeta(), // undefined => a symbol per legend row, auto
         excludeRects: [box],
+        onOcrProgress: (d, t) => {
+          setStep(`reading legend labels (OCR) ${d}/${t}…`);
+          setProgress(Math.round((d / t) * 100));
+        },
       });
+      setStep("uploading assets…");
+      setProgress(0);
       const bundle = await uploadPlan(draft, {
         onProgress: (d, t) => setProgress(Math.round((d / t) * 100)),
       });
@@ -184,10 +192,14 @@ export default function UploadPage() {
 
       {phase === "working" && (
         <>
-          <p>Reading the legend, rendering tiles, detecting symbols, uploading…</p>
+          <p>{step || "working…"}</p>
           <div className="progress">
             <span style={{ width: `${progress}%` }} />
           </div>
+          <p style={{ color: "var(--muted)", fontSize: 12 }}>
+            First run downloads the Hebrew OCR model (~15&nbsp;MB). Labels are a rough
+            draft — fix them inline in the editor.
+          </p>
         </>
       )}
     </main>

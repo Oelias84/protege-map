@@ -23,7 +23,8 @@
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
