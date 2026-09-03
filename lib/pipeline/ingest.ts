@@ -13,6 +13,7 @@ import { segmentLegend } from "./legend";
 import { buildSignature } from "./signature";
 import { buildTemplates, detectPlacements } from "./detect";
 import { ocrLegendLabels } from "./ocr";
+import { findLegend } from "./findLegend";
 import type { BBox, PlacementCandidate, SymbolDef } from "./types";
 
 /** operator-supplied metadata for each legend row, in row order */
@@ -23,7 +24,8 @@ export interface SymbolMeta {
 }
 
 export interface IngestOptions {
-  legendRect: BBox;
+  /** legend frame in device space. Omit to auto-locate it (findLegend). */
+  legendRect?: BBox;
   /**
    * One entry per legend row, top-to-bottom. Optional — when omitted, a symbol
    * is auto-created for every detected legend row (generic slug, blank label,
@@ -63,17 +65,31 @@ export interface PlanDraft {
 
 type Pdfjs = typeof import("pdfjs-dist");
 
-export async function ingestPdf(file: File, pdfjs: Pdfjs, opts: IngestOptions): Promise<PlanDraft> {
-  const { legendRect, symbolMeta, excludeRects = [legendRect], targetDpi = 220 } = opts;
+export async function ingestPdf(
+  file: File,
+  pdfjs: Pdfjs,
+  opts: IngestOptions = {},
+): Promise<PlanDraft> {
+  const { symbolMeta, targetDpi = 220 } = opts;
 
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const page = await doc.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
 
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
+
+  const auto = opts.legendRect ? null : findLegend(pv);
+  const legendRect = opts.legendRect ?? auto?.rect;
+  if (!legendRect) {
+    throw new Error(
+      "Could not locate the מקרא legend automatically — draw a box around it manually.",
+    );
+  }
+  const excludeRects = opts.excludeRects ?? [legendRect];
   const rows = segmentLegend(pv, {
     legendRect,
-    expectedRows: opts.symbolMeta?.length || undefined,
+    // operator's list wins; else the auto row-count estimate; else gap clustering
+    expectedRows: opts.symbolMeta?.length || auto?.rows || undefined,
   });
 
   // one symbol per legend row — use the operator's metadata if given, else auto
@@ -145,3 +161,21 @@ export async function ingestPdf(file: File, pdfjs: Pdfjs, opts: IngestOptions): 
 }
 
 export { tileKey };
+
+/**
+ * Cheap pre-pass for the upload UI: extract vectors and auto-locate the legend so
+ * the box can be shown pre-drawn. Returns null if nothing convincing was found.
+ */
+export async function detectLegendRect(
+  file: File,
+  pdfjs: Pdfjs,
+): Promise<{ rect: BBox; pageWidth: number; pageHeight: number; separation: number } | null> {
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
+  const guess = findLegend(pv);
+  return guess
+    ? { rect: guess.rect, pageWidth: pv.width, pageHeight: pv.height, separation: guess.separation }
+    : null;
+}

@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loadPdfjs } from "@/lib/pdf";
-import { ingestPdf, type SymbolMeta } from "@/lib/pipeline/ingest";
+import { detectLegendRect, ingestPdf, type SymbolMeta } from "@/lib/pipeline/ingest";
 import { uploadPlan } from "@/lib/client";
 import type { BBox } from "@/lib/pipeline/types";
 
@@ -24,6 +24,7 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
+  const [autoFound, setAutoFound] = useState<boolean | null>(null); // null=checking
 
   const dragRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -31,10 +32,13 @@ export default function UploadPage() {
     setError("");
     setFile(f);
     setBox(null);
+    setAutoFound(null);
     const pdfjs = await loadPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
     const page = await doc.getPage(1);
-    setPageSize({ w: page.getViewport({ scale: 1 }).width, h: page.getViewport({ scale: 1 }).height });
+    const w = page.getViewport({ scale: 1 }).width;
+    const h = page.getViewport({ scale: 1 }).height;
+    setPageSize({ w, h });
     const vp = page.getViewport({ scale: PREVIEW_SCALE });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(vp.width);
@@ -42,6 +46,24 @@ export default function UploadPage() {
     await page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
     setPreviewUrl(canvas.toDataURL("image/png"));
     setPhase("legend");
+
+    // auto-locate the legend so the operator only has to confirm / nudge
+    try {
+      const guess = await detectLegendRect(f, pdfjs);
+      if (guess) {
+        setBox({
+          x0: guess.rect.x0 / guess.pageWidth,
+          y0: guess.rect.y0 / guess.pageHeight,
+          x1: guess.rect.x1 / guess.pageWidth,
+          y1: guess.rect.y1 / guess.pageHeight,
+        });
+        setAutoFound(true);
+      } else {
+        setAutoFound(false);
+      }
+    } catch {
+      setAutoFound(false);
+    }
   }, []);
 
   /** pointer position -> fraction of the displayed image (0..1), scale-agnostic */
@@ -157,8 +179,19 @@ export default function UploadPage() {
       {phase === "legend" && previewUrl && (
         <>
           <p>
-            Drag a box around the <strong>מקרא</strong> legend. Every row becomes a button
-            automatically.
+            {autoFound === null && "Looking for the מקרא legend…"}
+            {autoFound === true && (
+              <>
+                Found the <strong>מקרא</strong> legend (blue box). Adjust it if it&apos;s off, then
+                ingest. Every row becomes a button.
+              </>
+            )}
+            {autoFound === false && (
+              <>
+                Couldn&apos;t locate the legend automatically — drag a box around the{" "}
+                <strong>מקרא</strong> column yourself.
+              </>
+            )}
           </p>
           <div
             style={{
