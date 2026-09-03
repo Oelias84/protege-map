@@ -51,7 +51,16 @@ export function PlanCanvas(props: PlanCanvasProps) {
   const viewerRef = useRef<OpenSeadragon.Viewer | null>(null);
   const osdRef = useRef<typeof OpenSeadragon | null>(null);
   const [, force] = useState(0);
-  const rerender = useCallback(() => force((n) => n + 1), []);
+  // OSD fires animation/update-viewport many times per frame — coalesce to one
+  // React re-render per animation frame so the 100+ pins don't thrash.
+  const rafRef = useRef<number | null>(null);
+  const rerender = useCallback(() => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      force((n) => n + 1);
+    });
+  }, []);
 
   const symbolById = new Map(symbols.map((s) => [s.id, s]));
 
@@ -102,6 +111,7 @@ export function PlanCanvas(props: PlanCanvasProps) {
 
     return () => {
       disposed = true;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       viewerRef.current?.destroy();
       viewerRef.current = null;
     };

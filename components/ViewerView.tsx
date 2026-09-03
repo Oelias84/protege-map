@@ -32,11 +32,14 @@ export function ViewerView({ bundle }: { bundle: PlanBundle }) {
 
   return (
     <div className="workspace">
+      <a className="skip-link" href="#legend">
+        Skip to legend
+      </a>
       <div className="workspace__main">
         <div className="workspace__bar">
           <div className="tb-cell">
             <span className="tb-label">Sheet</span>
-            <span className="tb-value tb-value--name">{plan.name}</span>
+            <h1 className="tb-value tb-value--name">{plan.name}</h1>
           </div>
           <span className="workspace__spacer" />
           <div className="tb-cell" style={{ borderInlineEnd: 0 }}>

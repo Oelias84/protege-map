@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import type { PlacementRow, PlacementStatus, SymbolRow } from "@/lib/domain";
 
 const STATUS_COLOR: Record<PlacementStatus, string> = {
@@ -24,7 +24,7 @@ export interface PlacementButtonProps {
  * In author mode it can be dragged; the drag is local until pointerup, then the
  * final client coords go up to PlanCanvas to convert back to normalised space.
  */
-export function PlacementButton({
+function PlacementButtonImpl({
   placement,
   symbol,
   screen,
@@ -48,6 +48,8 @@ export function PlacementButton({
       className={`pin${selected ? " pin--selected" : ""}`}
       style={{ left, top, ["--pin-color" as string]: color }}
       title={label}
+      aria-label={label || symbol?.labelHe || "device marker"}
+      aria-pressed={selected}
       dir="rtl"
       onPointerDown={(e) => {
         if (!draggable) return;
@@ -72,7 +74,13 @@ export function PlacementButton({
       onClick={(e) => e.preventDefault()}
     >
       <span className="pin__dot" />
-      {label && <span className="pin__label">{label}</span>}
+      {label && (
+        <span className="pin__label" aria-hidden>
+          {label}
+        </span>
+      )}
     </button>
   );
 }
+
+export const PlacementButton = memo(PlacementButtonImpl);

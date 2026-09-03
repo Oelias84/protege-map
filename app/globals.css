@@ -87,7 +87,8 @@ a {
   border: var(--rule-strong);
   background: var(--sheet);
   color: var(--graphite);
-  padding: 8px 14px;
+  min-height: 40px;
+  padding: 10px 16px;
   border-radius: 0;
   cursor: pointer;
   text-decoration: none;
@@ -109,21 +110,45 @@ a {
   border-color: var(--blueprint);
   color: var(--sheet);
 }
+.btn:active {
+  background: var(--graphite);
+  border-color: var(--graphite);
+  color: var(--sheet);
+}
+.btn--primary:active {
+  background: #1a1c21;
+}
 .btn:disabled {
   opacity: 0.4;
   cursor: default;
   background: var(--sheet);
   border-color: var(--hairline);
 }
-.btn:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
 .pin:focus-visible,
 .legend__row:focus-within {
   outline: 2px solid var(--blueprint);
   outline-offset: 1px;
+}
+
+/* keyboard escape from the 100+ pins in the canvas straight to the legend */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 1000;
+  padding: 8px 12px;
+  background: var(--graphite);
+  color: var(--sheet);
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  transform: translateY(-160%);
+  transition: transform 0.12s;
+}
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 /* --- workspace: sheet on the board + legend register --------------------- */
@@ -165,6 +190,7 @@ textarea:focus-visible,
   letter-spacing: 0.09em;
 }
 .tb-value {
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 500;
@@ -326,6 +352,13 @@ textarea:focus-visible,
   touch-action: none;
   transition: width 0.1s, height 0.1s;
 }
+/* extend the tap target to ~27px without growing the visible ring */
+.pin::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
 .pin__dot {
   width: 3px;
   height: 3px;
@@ -412,9 +445,9 @@ textarea:focus-visible,
   background: var(--blueprint-tint);
 }
 .legend__pick {
-  width: 34px;
-  height: 26px;
-  padding: 2px;
+  width: 40px;
+  min-height: 40px;
+  padding: 4px;
   background: var(--sheet);
   border: var(--rule);
   cursor: pointer;
@@ -706,5 +739,12 @@ code {
   }
   .workspace__stage {
     height: 60vh;
+  }
+  /* 16px avoids iOS focus auto-zoom */
+  .legend__label-input,
+  .editor__field input,
+  .editor__field select,
+  .editor__field textarea {
+    font-size: 16px;
   }
 }

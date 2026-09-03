@@ -239,7 +239,11 @@ export default function UploadPage() {
             />
           </details>
 
-          {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
+          {error && (
+            <p role="alert" style={{ color: "var(--redline)" }}>
+              {error}
+            </p>
+          )}
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn" onClick={() => setPhase("pick")}>
               Back
@@ -253,8 +257,14 @@ export default function UploadPage() {
 
       {phase === "working" && (
         <>
-          <p>{step || "working…"}</p>
-          <div className="progress">
+          <p aria-live="polite">{step || "working…"}</p>
+          <div
+            className="progress"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <span style={{ width: `${progress}%` }} />
           </div>
           <p style={{ color: "var(--graphite-60)", fontSize: 12 }}>

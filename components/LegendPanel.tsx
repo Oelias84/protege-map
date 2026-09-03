@@ -31,7 +31,7 @@ export function LegendPanel({
   for (const p of placements) found.set(p.symbolId, (found.get(p.symbolId) ?? 0) + 1);
 
   return (
-    <aside className="legend" dir="rtl">
+    <aside id="legend" className="legend" dir="rtl" aria-label="מקרא — רשימת סימנים">
       <h2 className="legend__title">מקרא</h2>
       <ul className="legend__list">
         {symbols.map((s) => {
@@ -46,7 +46,8 @@ export function LegendPanel({
                 className="legend__pick"
                 onClick={() => onPickSymbol?.(active ? null : s.id)}
                 disabled={!onPickSymbol}
-                title={onPickSymbol ? "בחר כדי למקם על התכנית" : undefined}
+                aria-pressed={active}
+                aria-label={`${active ? "בטל בחירת" : "בחר"} ${s.labelHe || `סימן ${s.rowIndex + 1}`} למיקום על התכנית`}
               >
                 <span className="legend__glyph">
                   {s.glyphPath ? (
