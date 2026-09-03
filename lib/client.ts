@@ -8,6 +8,7 @@ import type {
   PlanBundle,
   PlanRow,
   PlanStatus,
+  SymbolRow,
 } from "./domain";
 import type { PlanDraft } from "./pipeline/ingest";
 import { tileKey } from "./pipeline/render";
@@ -56,6 +57,17 @@ export const deletePlacement = (id: string) =>
   fetch(`/api/placements/${id}`, { method: "DELETE" }).then((r) => {
     if (!r.ok && r.status !== 204) throw new Error(`delete failed: ${r.status}`);
   });
+
+export const updateSymbol = (
+  planId: string,
+  symbolId: string,
+  patch: { labelHe?: string; expectedCount?: number | null },
+) =>
+  fetch(`/api/plans/${planId}/symbols/${symbolId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  }).then(json<SymbolRow>);
 
 export const setPlanStatus = (planId: string, status: PlanStatus) =>
   fetch(`/api/plans/${planId}`, {

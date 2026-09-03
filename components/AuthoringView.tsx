@@ -7,14 +7,16 @@ import {
   deletePlacement,
   setPlanStatus,
   updatePlacement,
+  updateSymbol,
 } from "@/lib/client";
-import type { PlacementFields, PlacementRow, PlanBundle } from "@/lib/domain";
+import type { PlacementFields, PlacementRow, PlanBundle, SymbolRow } from "@/lib/domain";
 import { PlanCanvas } from "./PlanCanvas";
 import { LegendPanel } from "./LegendPanel";
 import { FieldEditor } from "./FieldEditor";
 
 export function AuthoringView({ bundle }: { bundle: PlanBundle }) {
-  const { plan, symbols } = bundle;
+  const { plan } = bundle;
+  const [symbols, setSymbols] = useState<SymbolRow[]>(bundle.symbols);
   const [placements, setPlacements] = useState<PlacementRow[]>(bundle.placements);
   const [activeSymbolId, setActiveSymbolId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,6 +57,12 @@ export function AuthoringView({ bundle }: { bundle: PlanBundle }) {
     await deletePlacement(selected.id);
     setPlacements((ps) => ps.filter((p) => p.id !== selected.id));
     setSelectedId(null);
+  }
+
+  async function renameSymbol(symbolId: string, labelHe: string) {
+    setSymbols((ss) => ss.map((s) => (s.id === symbolId ? { ...s, labelHe } : s)));
+    const row = await updateSymbol(plan.id, symbolId, { labelHe });
+    setSymbols((ss) => ss.map((s) => (s.id === row.id ? row : s)));
   }
 
   async function togglePublish() {
@@ -125,6 +133,7 @@ export function AuthoringView({ bundle }: { bundle: PlanBundle }) {
         placements={placements}
         activeSymbolId={activeSymbolId}
         onPickSymbol={setActiveSymbolId}
+        onRenameSymbol={renameSymbol}
       />
     </div>
   );

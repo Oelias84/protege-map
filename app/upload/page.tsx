@@ -7,20 +7,19 @@ import { ingestPdf, type SymbolMeta } from "@/lib/pipeline/ingest";
 import { uploadPlan } from "@/lib/client";
 import type { BBox } from "@/lib/pipeline/types";
 
-type Phase = "pick" | "legend" | "symbols" | "working";
+type Phase = "pick" | "legend" | "working";
 
-const PREVIEW_SCALE = 0.5; // device px per PDF point in the preview <canvas>
+const PREVIEW_SCALE = 0.5; // preview px per PDF point
 
 export default function UploadPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("pick");
   const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [pageSize, setPageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [previewUrl, setPreviewUrl] = useState("");
   const [box, setBox] = useState<BBox | null>(null);
   const [meta, setMeta] = useState("");
   const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
   const dragRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -36,56 +35,59 @@ export default function UploadPage() {
     canvas.height = Math.ceil(vp.height);
     await page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
     setPreviewUrl(canvas.toDataURL("image/png"));
-    setPageSize({ w: vp.width / PREVIEW_SCALE, h: vp.height / PREVIEW_SCALE });
     setPhase("legend");
   }, []);
 
-  const previewToDevice = (px: number, py: number): [number, number] => [
+  const toDevice = (px: number, py: number): [number, number] => [
     px / PREVIEW_SCALE,
     py / PREVIEW_SCALE,
   ];
 
-  function onPreviewDown(e: React.PointerEvent) {
+  function onDown(e: React.PointerEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     dragRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    setBox(null);
   }
-  function onPreviewMove(e: React.PointerEvent) {
+  function onMove(e: React.PointerEvent) {
     if (!dragRef.current) return;
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
-    const [dx0, dy0] = previewToDevice(Math.min(dragRef.current.x, x), Math.min(dragRef.current.y, y));
-    const [dx1, dy1] = previewToDevice(Math.max(dragRef.current.x, x), Math.max(dragRef.current.y, y));
-    setBox({ x0: dx0, y0: dy0, x1: dx1, y1: dy1 });
+    const [x0, y0] = toDevice(Math.min(dragRef.current.x, x), Math.min(dragRef.current.y, y));
+    const [x1, y1] = toDevice(Math.max(dragRef.current.x, x), Math.max(dragRef.current.y, y));
+    setBox({ x0, y0, x1, y1 });
   }
-  const onPreviewUp = () => {
+  const onUp = () => {
     dragRef.current = null;
   };
 
-  function parseMeta(): SymbolMeta[] {
-    return meta
+  /** parse the optional label textarea; empty -> undefined (fully automatic) */
+  function parseMeta(): SymbolMeta[] | undefined {
+    const lines = meta
       .split("\n")
       .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l, i) => {
-        const [slug, label, count] = l.split("|").map((s) => s.trim());
-        return {
-          slug: slug || `symbol-${i + 1}`,
-          labelHe: label || slug || `symbol-${i + 1}`,
-          expectedCount: count ? Number(count) : null,
-        };
-      });
+      .filter(Boolean);
+    if (!lines.length) return undefined;
+    return lines.map((l, i) => {
+      const [slug, label, count] = l.split("|").map((s) => s.trim());
+      return {
+        slug: slug || `symbol-${i + 1}`,
+        labelHe: label || slug || `symbol-${i + 1}`,
+        expectedCount: count ? Number(count) : null,
+      };
+    });
   }
 
   async function run() {
     if (!file || !box) return;
     setPhase("working");
     setError("");
+    setProgress(0);
     try {
       const pdfjs = await loadPdfjs();
       const draft = await ingestPdf(file, pdfjs, {
         legendRect: box,
-        symbolMeta: parseMeta(),
+        symbolMeta: parseMeta(), // undefined => a symbol per legend row, auto
         excludeRects: [box],
       });
       const bundle = await uploadPlan(draft, {
@@ -94,7 +96,7 @@ export default function UploadPage() {
       router.push(`/authoring/${bundle.plan.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setPhase("symbols");
+      setPhase("legend");
     }
   }
 
@@ -119,12 +121,20 @@ export default function UploadPage() {
 
       {phase === "legend" && previewUrl && (
         <>
-          <p>Drag a box around the מקרא legend.</p>
+          <p>
+            Drag a box around the <strong>מקרא</strong> legend. Every row becomes a button
+            automatically.
+          </p>
           <div
-            style={{ position: "relative", display: "inline-block", cursor: "crosshair", userSelect: "none" }}
-            onPointerDown={onPreviewDown}
-            onPointerMove={onPreviewMove}
-            onPointerUp={onPreviewUp}
+            style={{
+              position: "relative",
+              display: "inline-block",
+              cursor: "crosshair",
+              userSelect: "none",
+            }}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="plan preview" style={{ display: "block", maxWidth: "100%" }} />
@@ -142,46 +152,42 @@ export default function UploadPage() {
               />
             )}
           </div>
+
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", color: "var(--muted)" }}>
+              Add labels &amp; BOQ counts (optional)
+            </summary>
+            <p style={{ color: "var(--muted)", marginBottom: 4 }}>
+              One legend row per line, top-to-bottom: <code>slug | Hebrew label | count</code>.
+              Leave blank to auto-name every row.
+            </p>
+            <textarea
+              value={meta}
+              onChange={(e) => setMeta(e.target.value)}
+              rows={8}
+              style={{ width: "100%", font: "13px ui-monospace, monospace" }}
+              placeholder={"smoke-detector | גלאי עשן | 54\nstrobe | נצנץ | 7"}
+            />
+          </details>
+
+          {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn" onClick={() => setPhase("pick")}>
               Back
             </button>
-            <button className="btn btn--primary" disabled={!box} onClick={() => setPhase("symbols")}>
-              Next
+            <button className="btn btn--primary" disabled={!box} onClick={run}>
+              Ingest &amp; create buttons
             </button>
           </div>
         </>
       )}
 
-      {(phase === "symbols" || phase === "working") && (
+      {phase === "working" && (
         <>
-          <p>
-            One legend row per line: <code>slug | Hebrew label | expected count</code>. Order must
-            match the legend top-to-bottom. Counts are optional (used as a checklist).
-          </p>
-          <textarea
-            value={meta}
-            onChange={(e) => setMeta(e.target.value)}
-            rows={12}
-            disabled={phase === "working"}
-            style={{ width: "100%", font: "13px ui-monospace, monospace" }}
-            placeholder={"smoke-detector | גלאי עשן | 54\nstrobe | נצנץ | 7"}
-          />
-          {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-          {phase === "working" ? (
-            <div className="progress">
-              <span style={{ width: `${progress}%` }} />
-            </div>
-          ) : (
-            <div className="row" style={{ marginTop: 12 }}>
-              <button className="btn" onClick={() => setPhase("legend")}>
-                Back
-              </button>
-              <button className="btn btn--primary" onClick={run}>
-                Ingest
-              </button>
-            </div>
-          )}
+          <p>Reading the legend, rendering tiles, detecting symbols, uploading…</p>
+          <div className="progress">
+            <span style={{ width: `${progress}%` }} />
+          </div>
         </>
       )}
     </main>

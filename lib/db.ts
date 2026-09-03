@@ -207,6 +207,32 @@ export async function getSymbols(planId: string): Promise<SymbolRow[]> {
   return rows.map(toSymbol);
 }
 
+export async function updateSymbol(
+  id: string,
+  patch: { labelHe?: string; expectedCount?: number | null },
+): Promise<SymbolRow | null> {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (patch.labelHe !== undefined) {
+    vals.push(patch.labelHe);
+    sets.push(`label_he = $${vals.length}`);
+  }
+  if (patch.expectedCount !== undefined) {
+    vals.push(patch.expectedCount);
+    sets.push(`expected_count = $${vals.length}`);
+  }
+  if (!sets.length) {
+    const { rows } = await q("select * from symbol where id = $1", [id]);
+    return rows[0] ? toSymbol(rows[0]) : null;
+  }
+  vals.push(id);
+  const { rows } = await q(
+    `update symbol set ${sets.join(", ")} where id = $${vals.length} returning *`,
+    vals,
+  );
+  return rows[0] ? toSymbol(rows[0]) : null;
+}
+
 /* ---------------------------- placements --------------------------- */
 
 export async function getPlacements(planId: string): Promise<PlacementRow[]> {

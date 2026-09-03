@@ -23,7 +23,12 @@ export interface SymbolMeta {
 
 export interface IngestOptions {
   legendRect: BBox;
-  symbolMeta: SymbolMeta[];
+  /**
+   * One entry per legend row, top-to-bottom. Optional — when omitted, a symbol
+   * is auto-created for every detected legend row (generic slug, blank label,
+   * the glyph crop as its identity) so the operator gets a ready button set.
+   */
+  symbolMeta?: SymbolMeta[];
   /** regions to skip when scanning for instances (defaults to just the legend) */
   excludeRects?: BBox[];
   targetDpi?: number;
@@ -64,18 +69,27 @@ export async function ingestPdf(file: File, pdfjs: Pdfjs, opts: IngestOptions): 
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
   const rows = segmentLegend(pv, {
     legendRect,
-    expectedRows: symbolMeta.length || undefined,
+    expectedRows: opts.symbolMeta?.length || undefined,
   });
 
-  const n = Math.min(rows.length, symbolMeta.length);
-  const symbolDefs: SymbolDef[] = rows.slice(0, n).map((r, i) => ({
-    id: symbolMeta[i].slug,
+  // one symbol per legend row — use the operator's metadata if given, else auto
+  const meta: SymbolMeta[] = rows.map((_, i) => {
+    const m = opts.symbolMeta?.[i];
+    return {
+      slug: m?.slug || `symbol-${i + 1}`,
+      labelHe: m?.labelHe ?? "",
+      expectedCount: m?.expectedCount ?? null,
+    };
+  });
+
+  const symbolDefs: SymbolDef[] = rows.map((r, i) => ({
+    id: meta[i].slug,
     rowIndex: i,
-    labelHe: symbolMeta[i].labelHe,
-    expectedCount: symbolMeta[i].expectedCount ?? undefined,
+    labelHe: meta[i].labelHe,
+    expectedCount: meta[i].expectedCount ?? undefined,
     signature: buildSignature(r.glyphPaths, r.glyphBBox),
   }));
-  const templates = buildTemplates(rows, symbolMeta.map((m) => m.slug));
+  const templates = buildTemplates(rows, meta.map((m) => m.slug));
 
   const candidates = opts.skipDetect
     ? []
@@ -100,7 +114,7 @@ export async function ingestPdf(file: File, pdfjs: Pdfjs, opts: IngestOptions): 
     renderDpi: targetDpi,
     scale: rendered.scale,
     legendRect,
-    symbols: symbolMeta.map((m, i) => ({
+    symbols: meta.map((m, i) => ({
       slug: m.slug,
       labelHe: m.labelHe,
       rowIndex: i,
