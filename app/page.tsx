@@ -8,38 +8,30 @@ export default async function HomePage() {
   return (
     <main className="page">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1>Plans</h1>
+        <h1>Sheets</h1>
         <Link className="btn btn--primary" href="/upload">
-          Upload plan
+          Upload a sheet
         </Link>
       </div>
 
       {plans.length === 0 ? (
-        <p style={{ color: "var(--muted)" }}>
-          No plans yet. Upload a vector building-plan PDF to start.
+        <p style={{ color: "var(--graphite-60)", marginTop: 24 }}>
+          No sheets yet. Upload a vector building-plan PDF to mark up its מקרא.
         </p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, marginTop: 20 }}>
+        <ul className="sheet-list">
           {plans.map((p) => (
-            <li
-              key={p.id}
-              className="row"
-              style={{
-                justifyContent: "space-between",
-                border: "1px solid var(--line)",
-                borderRadius: 10,
-                padding: "12px 16px",
-                marginBottom: 8,
-                background: "var(--panel)",
-              }}
-            >
+            <li key={p.id} className="sheet-list__row">
               <div>
-                <strong>{p.name}</strong>
-                <span style={{ color: "var(--muted)", marginInlineStart: 8 }}>{p.status}</span>
+                <span className="tb-label">Sheet</span>
+                <div className="sheet-list__name">{p.name}</div>
               </div>
+              <span className="tb-value tb-status" data-status={p.status}>
+                {p.status}
+              </span>
               <div className="row">
                 <Link className="btn" href={`/authoring/${p.id}`}>
-                  Author
+                  Mark up
                 </Link>
                 <Link className="btn" href={`/view/${p.id}`}>
                   View

@@ -137,6 +137,10 @@ export function PlanCanvas(props: PlanCanvasProps) {
   return (
     <div className="plan-canvas">
       <div ref={hostRef} className="plan-canvas__osd" />
+      <span className="regmark regmark--tl" aria-hidden />
+      <span className="regmark regmark--tr" aria-hidden />
+      <span className="regmark regmark--bl" aria-hidden />
+      <span className="regmark regmark--br" aria-hidden />
       <div className="plan-canvas__overlay">
         {placements.map((p) => {
           const pos = toScreen(p.x, p.y);

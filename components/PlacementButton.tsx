@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import type { PlacementRow, PlacementStatus, SymbolRow } from "@/lib/domain";
 
 const STATUS_COLOR: Record<PlacementStatus, string> = {
-  planned: "#64748b",
-  installed: "#16a34a",
-  issue: "#dc2626",
+  planned: "var(--blueprint)",
+  installed: "var(--stamp)",
+  issue: "var(--redline)",
 };
 
 export interface PlacementButtonProps {
@@ -46,7 +46,7 @@ export function PlacementButton({
     <button
       type="button"
       className={`pin${selected ? " pin--selected" : ""}`}
-      style={{ left, top, borderColor: color, ["--pin-color" as string]: color }}
+      style={{ left, top, ["--pin-color" as string]: color }}
       title={label}
       dir="rtl"
       onPointerDown={(e) => {

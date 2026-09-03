@@ -159,7 +159,7 @@ export default function UploadPage() {
 
   return (
     <main className="page">
-      <h1>Upload plan</h1>
+      <h1>Upload a sheet</h1>
 
       {phase === "pick" && (
         <label className="drop">
@@ -170,7 +170,7 @@ export default function UploadPage() {
             onChange={(e) => e.target.files?.[0] && onPick(e.target.files[0])}
           />
           <div>Drop a vector building-plan PDF here, or click to choose</div>
-          <div style={{ color: "var(--muted)", marginTop: 8 }}>
+          <div style={{ color: "var(--graphite-60)" }}>
             Runs entirely in your browser. Desktop recommended.
           </div>
         </label>
@@ -214,8 +214,8 @@ export default function UploadPage() {
                   top: `${box.y0 * 100}%`,
                   width: `${(box.x1 - box.x0) * 100}%`,
                   height: `${(box.y1 - box.y0) * 100}%`,
-                  border: "2px solid var(--accent)",
-                  background: "rgba(37,99,235,0.12)",
+                  border: "2px solid var(--blueprint)",
+                  background: "rgba(36,74,107,0.14)",
                   pointerEvents: "none",
                 }}
               />
@@ -223,10 +223,10 @@ export default function UploadPage() {
           </div>
 
           <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: "pointer", color: "var(--muted)" }}>
+            <summary style={{ cursor: "pointer", color: "var(--graphite-60)" }}>
               Add labels &amp; BOQ counts (optional)
             </summary>
-            <p style={{ color: "var(--muted)", marginBottom: 4 }}>
+            <p style={{ color: "var(--graphite-60)", marginBottom: 4 }}>
               One legend row per line, top-to-bottom: <code>slug | Hebrew label | count</code>.
               Leave blank to auto-name every row.
             </p>
@@ -257,7 +257,7 @@ export default function UploadPage() {
           <div className="progress">
             <span style={{ width: `${progress}%` }} />
           </div>
-          <p style={{ color: "var(--muted)", fontSize: 12 }}>
+          <p style={{ color: "var(--graphite-60)", fontSize: 12 }}>
             First run downloads the Hebrew OCR model (~15&nbsp;MB). Labels are a rough
             draft — fix them inline in the editor.
           </p>

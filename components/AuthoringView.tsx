@@ -80,24 +80,35 @@ export function AuthoringView({ bundle }: { bundle: PlanBundle }) {
     <div className="workspace">
       <div className="workspace__main">
         <div className="workspace__bar">
-          <h1>{plan.name}</h1>
-          <span style={{ color: "var(--muted)" }}>
-            {placements.length} buttons · {status}
-          </span>
-          <span className="workspace__spacer" />
-          {activeSymbolId && (
-            <span style={{ color: "var(--accent)" }}>
-              click the plan to place ·{" "}
+          <div className="tb-cell">
+            <span className="tb-label">Sheet</span>
+            <span className="tb-value tb-value--name">{plan.name}</span>
+          </div>
+          <div className="tb-cell">
+            <span className="tb-label">Buttons</span>
+            <span className="tb-value">{String(placements.length).padStart(3, "0")}</span>
+          </div>
+          <div className="tb-cell">
+            <span className="tb-label">Status</span>
+            <span className="tb-value tb-status" data-status={status}>
+              {status}
+            </span>
+          </div>
+          {activeSymbolId ? (
+            <span className="workspace__hint">
+              pick a point on the sheet
               <button className="btn" onClick={() => setActiveSymbolId(null)}>
                 done
               </button>
             </span>
+          ) : (
+            <span className="workspace__spacer" />
           )}
           <button className="btn" onClick={togglePublish} disabled={busy}>
             {status === "published" ? "Unpublish" : "Publish"}
           </button>
           <Link className="btn" href={`/view/${plan.id}`}>
-            View
+            Open viewer
           </Link>
         </div>
 

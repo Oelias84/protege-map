@@ -34,9 +34,15 @@ export function ViewerView({ bundle }: { bundle: PlanBundle }) {
     <div className="workspace">
       <div className="workspace__main">
         <div className="workspace__bar">
-          <h1>{plan.name}</h1>
+          <div className="tb-cell">
+            <span className="tb-label">Sheet</span>
+            <span className="tb-value tb-value--name">{plan.name}</span>
+          </div>
           <span className="workspace__spacer" />
-          <span style={{ color: "var(--muted)" }}>{placements.length} points</span>
+          <div className="tb-cell" style={{ borderInlineEnd: 0 }}>
+            <span className="tb-label">Points</span>
+            <span className="tb-value">{String(placements.length).padStart(3, "0")}</span>
+          </div>
         </div>
 
         <div className="workspace__stage">
