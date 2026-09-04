@@ -1,0 +1,40 @@
+# Full stack for running the plan builder anywhere Docker runs.
+#   docker compose up --build      -> http://localhost:3000
+# Data (Postgres + rendered plans) persists in named volumes.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pb
+      POSTGRES_DB: plan_builder
+    # schema is applied automatically on first boot of an empty volume
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d plan_builder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+    environment:
+      DATABASE_URL: postgres://postgres:pb@db:5432/plan_builder
+      STORAGE_DIR: /app/storage
+    volumes:
+      - plan-storage:/app/storage
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  plan-storage:

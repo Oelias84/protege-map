@@ -1,8 +1,19 @@
+# deps / build
 node_modules/
 .next/
-candidates.json
-*.log
-storage/
+out/
 *.tsbuildinfo
+
+# env & secrets
+.env
+.env.local
+.env*.local
+
+# generated vendored assets (recreated by postinstall)
 public/pdf.worker.min.mjs
 public/openseadragon-images/
+
+# runtime data / scratch
+storage/
+candidates.json
+*.log

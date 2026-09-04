@@ -1,30 +1,41 @@
-# Plan interaction builder
+# protege-map — plan interaction builder
 
-Turn a fire/MEP building-plan PDF into an interactive map: read the מקרא legend,
+Turn a fire/MEP building-plan PDF into an interactive map: locate the מקרא legend,
 place a tappable, movable button for every symbol instance, attach data to each.
 
 - **Ingestion** runs in the browser (`pdf.js`) — see [lib/pipeline](lib/pipeline/README.md).
 - **Persistence** is Postgres + local files behind Next.js route handlers (this doc).
-- **UI** — `/upload` (draw the legend box → enter symbol rows → ingest), `/authoring/[id]`
+- **UI** — `/upload` (auto-finds the legend → auto-ingests), `/authoring/[id]`
   (place / move / relabel / delete buttons, publish), `/view/[id]` (pan-zoom, tap a
   button to edit its data, drag to relocate).
 
-## Setup
+## Run with Docker (whole stack)
 
 ```bash
-npm install                     # postinstall copies pdf.worker.min.mjs to public/
-cp .env.example .env            # set DATABASE_URL, STORAGE_DIR
+docker compose up --build          # http://localhost:3000
+```
+
+Brings up Postgres (schema auto-applied on first boot) and the app. Plan data and
+the Postgres volume persist across restarts. Stop with `docker compose down`
+(add `-v` to wipe the data volumes).
+
+## Run locally (dev)
+
+```bash
+npm install                        # postinstall vendors pdf.worker.min.mjs + OSD images into public/
+cp .env.example .env               # set DATABASE_URL, STORAGE_DIR
 createdb plan_builder
 psql "$DATABASE_URL" -f db/schema.sql
-npm run dev                     # http://localhost:3000
+npm run dev                        # http://localhost:3000
 ```
 
 ## End-to-end flow
 
-1. `/upload` → pick the PDF → drag a box around the מקרא → paste one
-   `slug | Hebrew label | count` line per legend row → **Ingest**.
-   The browser renders DZI tiles, crops glyphs, runs detection, and `PUT`s every
-   asset, then redirects to authoring.
+1. `/upload` → pick the PDF. It searches the text layer for `מקרא`, falls back to
+   detecting the symbol column by geometry, and — when confident — ingests straight
+   away (renders DZI tiles, crops glyphs, OCRs labels, runs detection, `PUT`s every
+   asset). Only when detection is unsure does it show a box to nudge. Labels + BOQ
+   counts stay available in an optional textarea.
 2. `/authoring/[id]` → the auto-detected buttons are already on the plan. Fix
    labels/types, drag misplaced ones, add missed (pick a legend row, click the
    plan), delete false positives. The legend count column (found / BOQ) is the

@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+.git
+.env
+.env.local
+.env*.local
+storage
+candidates.json
+*.log
+*.tsbuildinfo
+scripts/probe-plan.mts
+README.md
