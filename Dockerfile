@@ -14,7 +14,8 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # DATABASE_URL isn't needed to build; a dummy keeps any import-time checks happy
 ENV DATABASE_URL=postgres://build:build@localhost:5432/build
-RUN npm run build
+# regenerate the vendored public/ assets from node_modules (fresh clones lack them)
+RUN npm run postinstall && npm run build
 
 # --- run: minimal image with just the standalone output
 FROM node:20-bookworm-slim AS runner
