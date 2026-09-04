@@ -13,7 +13,7 @@ import { segmentLegend } from "./legend";
 import { buildSignature } from "./signature";
 import { buildTemplates, detectPlacements } from "./detect";
 import { ocrLegendLabels } from "./ocr";
-import { findLegend } from "./findLegend";
+import { findLegend, findLegendTitle } from "./findLegend";
 import type { BBox, PlacementCandidate, SymbolDef } from "./types";
 
 /** operator-supplied metadata for each legend row, in row order */
@@ -78,7 +78,12 @@ export async function ingestPdf(
 
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
 
-  const auto = opts.legendRect ? null : findLegend(pv);
+  let auto = null as ReturnType<typeof findLegend>;
+  if (!opts.legendRect) {
+    const tc = await page.getTextContent().catch(() => null);
+    const title = tc ? findLegendTitle(tc.items as never[], pv.height) : null;
+    auto = findLegend(pv, { title });
+  }
   const legendRect = opts.legendRect ?? auto?.rect;
   if (!legendRect) {
     throw new Error(
@@ -169,13 +174,27 @@ export { tileKey };
 export async function detectLegendRect(
   file: File,
   pdfjs: Pdfjs,
-): Promise<{ rect: BBox; pageWidth: number; pageHeight: number; separation: number } | null> {
+): Promise<{
+  rect: BBox;
+  pageWidth: number;
+  pageHeight: number;
+  separation: number;
+  via: "text" | "geometry";
+} | null> {
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const page = await doc.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
-  const guess = findLegend(pv);
+  const tc = await page.getTextContent().catch(() => null);
+  const title = tc ? findLegendTitle(tc.items as never[], pv.height) : null;
+  const guess = findLegend(pv, { title });
   return guess
-    ? { rect: guess.rect, pageWidth: pv.width, pageHeight: pv.height, separation: guess.separation }
+    ? {
+        rect: guess.rect,
+        pageWidth: pv.width,
+        pageHeight: pv.height,
+        separation: guess.separation,
+        via: guess.via,
+      }
     : null;
 }

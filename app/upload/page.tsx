@@ -58,8 +58,8 @@ export default function UploadPage() {
           y1: guess.rect.y1 / guess.pageHeight,
         });
         setAutoFound(true);
-        // separation = best column score / runner-up; >3 is a confident lock
-        if (guess.separation >= 3) {
+        // a text hit on "מקרא", or a geometry column that clearly beats the rest
+        if (guess.via === "text" || guess.separation >= 3) {
           run(f, guess.rect);
           return;
         }

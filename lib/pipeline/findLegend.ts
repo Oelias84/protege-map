@@ -23,10 +23,62 @@ export interface LegendGuess {
   /** ratio of best column score to the runner-up — >2 is a confident lock */
   separation: number;
   rows: number;
+  /** how the legend was located */
+  via: "text" | "geometry";
 }
 
-export function findLegend(page: PageVectors): LegendGuess | null {
+/** minimal shape of a pdf.js text item */
+export interface TextItem {
+  str: string;
+  /** [a, b, c, d, e, f] — e,f are the x,y origin in PDF space (y-up) */
+  transform: number[];
+  width?: number;
+  height?: number;
+}
+
+const LEGEND_WORDS = ["מקרא", "מקרא הסימנים", "מקרא סימנים", "רשימת סמלים", "legend", "key"];
+const norm = (s: string) => s.trim().toLowerCase().replace(/[:\s]+/g, "");
+const rev = (s: string) => [...s].reverse().join("");
+
+/**
+ * Find the legend title in the text layer. CAD exports often keep it as real
+ * text; some reverse Hebrew glyph order, so we test the string and its reverse.
+ * Returns the title's bbox in device space (y-down, origin top-left).
+ */
+export function findLegendTitle(items: TextItem[], pageHeight: number): BBox | null {
+  const targets = new Set<string>();
+  for (const w of LEGEND_WORDS) {
+    targets.add(norm(w));
+    targets.add(norm(rev(w)));
+  }
+  const isHit = (s: string) => {
+    const n = norm(s);
+    return n.length > 0 && [...targets].some((t) => n === t || (t.length >= 4 && n.includes(t)));
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    // check the item alone and joined with the next two (words get split)
+    const joins = [items[i].str, items[i].str + (items[i + 1]?.str ?? ""), items[i].str + (items[i + 1]?.str ?? "") + (items[i + 2]?.str ?? "")];
+    if (!joins.some(isHit)) continue;
+    const t = items[i].transform;
+    const w = items[i].width ?? 30;
+    const h = items[i].height ?? 12;
+    const x0 = t[4];
+    const y1 = pageHeight - t[5]; // baseline, device space
+    return { x0, y0: y1 - h, x1: x0 + w, y1 };
+  }
+  return null;
+}
+
+export interface FindLegendOptions {
+  /** legend title bbox from the text layer (findLegendTitle) — a strong anchor */
+  title?: BBox | null;
+}
+
+export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): LegendGuess | null {
   const { width: W, height: H } = page;
+  const title = opts.title ?? null;
+  const [titleCx] = title ? bboxCenter(title) : [NaN];
 
   // coloured, glyph-sized seed points
   const seeds = page.paths
@@ -91,10 +143,20 @@ export function findLegend(page: PageVectors): LegendGuess | null {
 
     const fcx = cx / W;
     const fcy = (y0 + y1) / 2 / H;
-    const marginBonus = (fcx > 0.7 || fcx < 0.16 ? 1.6 : 1) * (fcy > 0.6 || fcy < 0.18 ? 1.3 : 1);
+    // legends usually sit in a panel/margin — a weak prior, not a position lock
+    const marginBonus = (fcx > 0.7 || fcx < 0.16 ? 1.35 : 1) * (fcy > 0.6 || fcy < 0.18 ? 1.2 : 1);
+
+    // if the text layer gave us the title, strongly favour the column beneath it
+    let titleBonus = 1;
+    if (title) {
+      const alignsX = Math.abs(cx - titleCx) < 220;
+      const startsBelow = y0 >= title.y0 - 12 && y0 <= title.y1 + 90;
+      if (alignsX && startsBelow) titleBonus = 6;
+      else if (alignsX || startsBelow) titleBonus = 2;
+    }
 
     const score =
-      (rowCount * Math.pow(colors, 1.3) * marginBonus * Math.min(1, (y1 - y0) / 180)) /
+      (rowCount * Math.pow(colors, 1.3) * marginBonus * titleBonus * Math.min(1, (y1 - y0) / 180)) /
       (1 + cv * 2) /
       (1 + xSpread / 25);
 
@@ -106,7 +168,23 @@ export function findLegend(page: PageVectors): LegendGuess | null {
     }
   }
 
-  if (!best || best.score < 8) return null;
+  // no convincing glyph column — but if the text layer found the title, derive a
+  // rect straight from it (covers legends drawn with plain black line symbols)
+  if (!best || best.score < 8) {
+    if (!title) return null;
+    const th = title.y1 - title.y0 || 12;
+    return {
+      rect: {
+        x0: Math.max(0, titleCx - 300),
+        x1: Math.min(W, titleCx + 300),
+        y0: Math.max(0, title.y0 - 6),
+        y1: Math.min(H, title.y1 + th * 34),
+      },
+      separation: 3,
+      rows: 0,
+      via: "text",
+    };
+  }
 
   // build the rect: glyph column + the text column beside it
   const xs = best.pts.map((p) => p.x);
@@ -139,9 +217,17 @@ export function findLegend(page: PageVectors): LegendGuess | null {
     y0: Math.max(0, y0),
     y1: Math.min(H, y1),
   };
-  // clamp to page
+  // if the text layer gave a title above this column, snap the top to it
+  if (title && Math.abs((rect.x0 + rect.x1) / 2 - titleCx) < 260 && title.y0 < rect.y0 + 40) {
+    rect.y0 = Math.max(0, Math.min(rect.y0, title.y0 - 4));
+  }
   rect.x0 = Math.max(0, rect.x0);
   rect.x1 = Math.min(W, rect.x1);
 
-  return { rect, separation: best.score / (second || 1), rows: best.rows };
+  return {
+    rect,
+    separation: best.score / (second || 1),
+    rows: best.rows,
+    via: title ? "text" : "geometry",
+  };
 }
