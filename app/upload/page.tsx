@@ -47,7 +47,7 @@ export default function UploadPage() {
     setPreviewUrl(canvas.toDataURL("image/png"));
     setPhase("legend");
 
-    // auto-locate the legend so the operator only has to confirm / nudge
+    // auto-locate the legend; if we're confident, ingest straight away
     try {
       const guess = await detectLegendRect(f, pdfjs);
       if (guess) {
@@ -58,6 +58,11 @@ export default function UploadPage() {
           y1: guess.rect.y1 / guess.pageHeight,
         });
         setAutoFound(true);
+        // separation = best column score / runner-up; >3 is a confident lock
+        if (guess.separation >= 3) {
+          run(f, guess.rect);
+          return;
+        }
       } else {
         setAutoFound(false);
       }
@@ -122,16 +127,17 @@ export default function UploadPage() {
     });
   }
 
-  async function run() {
-    const legendRect = deviceBox();
-    if (!file || !legendRect) return;
+  async function run(fileArg?: File, rectOverride?: BBox) {
+    const f = fileArg ?? file;
+    const legendRect = rectOverride ?? deviceBox();
+    if (!f || !legendRect) return;
     setPhase("working");
     setError("");
     setProgress(0);
     try {
       const pdfjs = await loadPdfjs();
-      setStep("reading legend & rendering tiles…");
-      const draft = await ingestPdf(file, pdfjs, {
+      setStep("locating the legend & rendering tiles…");
+      const draft = await ingestPdf(f, pdfjs, {
         legendRect,
         symbolMeta: parseMeta(), // undefined => a symbol per legend row, auto
         excludeRects: [legendRect],
@@ -182,14 +188,14 @@ export default function UploadPage() {
             {autoFound === null && "Looking for the מקרא legend…"}
             {autoFound === true && (
               <>
-                Found the <strong>מקרא</strong> legend (blue box). Adjust it if it&apos;s off, then
-                ingest. Every row becomes a button.
+                Found a likely <strong>מקרא</strong> legend but wasn&apos;t certain — check the blue
+                box, adjust if it&apos;s off, then ingest.
               </>
             )}
             {autoFound === false && (
               <>
                 Couldn&apos;t locate the legend automatically — drag a box around the{" "}
-                <strong>מקרא</strong> column yourself.
+                <strong>מקרא</strong> column (the row of small symbols) yourself.
               </>
             )}
           </p>
@@ -248,7 +254,7 @@ export default function UploadPage() {
             <button className="btn" onClick={() => setPhase("pick")}>
               Back
             </button>
-            <button className="btn btn--primary" disabled={!deviceBox()} onClick={run}>
+            <button className="btn btn--primary" disabled={!deviceBox()} onClick={() => run()}>
               Ingest &amp; create buttons
             </button>
           </div>
