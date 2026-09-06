@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useRef, useState } from "react";
+import { assetUrl } from "@/lib/client";
 import type { PlacementRow, PlacementStatus, SymbolRow } from "@/lib/domain";
 
 const STATUS_COLOR: Record<PlacementStatus, string> = {
@@ -10,6 +11,7 @@ const STATUS_COLOR: Record<PlacementStatus, string> = {
 };
 
 export interface PlacementButtonProps {
+  planId: string;
   placement: PlacementRow;
   symbol?: SymbolRow;
   screen: { left: number; top: number };
@@ -25,6 +27,7 @@ export interface PlacementButtonProps {
  * final client coords go up to PlanCanvas to convert back to normalised space.
  */
 function PlacementButtonImpl({
+  planId,
   placement,
   symbol,
   screen,
@@ -39,13 +42,14 @@ function PlacementButtonImpl({
 
   const label = placement.fields.label || symbol?.labelHe || "";
   const color = STATUS_COLOR[placement.fields.status] ?? STATUS_COLOR.planned;
+  const glyphSrc = symbol?.glyphPath ? assetUrl(planId, `glyphs/${symbol.rowIndex}.png`) : null;
   const left = screen.left + (drag?.dx ?? 0);
   const top = screen.top + (drag?.dy ?? 0);
 
   return (
     <button
       type="button"
-      className={`pin${selected ? " pin--selected" : ""}`}
+      className={`pin${glyphSrc ? " pin--glyph" : ""}${selected ? " pin--selected" : ""}`}
       style={{ left, top, ["--pin-color" as string]: color }}
       title={label}
       aria-label={label || symbol?.labelHe || "device marker"}
@@ -73,7 +77,12 @@ function PlacementButtonImpl({
       }}
       onClick={(e) => e.preventDefault()}
     >
-      <span className="pin__dot" />
+      {glyphSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="pin__glyph" src={glyphSrc} alt="" draggable={false} />
+      ) : (
+        <span className="pin__dot" />
+      )}
       {label && (
         <span className="pin__label" aria-hidden>
           {label}

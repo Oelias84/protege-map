@@ -158,6 +158,7 @@ export function PlanCanvas(props: PlanCanvasProps) {
           return (
             <PlacementButton
               key={p.id}
+              planId={planId}
               placement={p}
               symbol={symbolById.get(p.symbolId)}
               screen={pos}

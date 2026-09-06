@@ -335,7 +335,9 @@ a {
   }
 }
 
-/* --- pins: registration rings, not map pins ----------------------------- */
+/* --- pins ------------------------------------------------------------------
+   Default: a registration ring + dot. With a legend glyph crop: a small
+   square chip carrying that symbol, framed in its status colour. */
 .pin {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -352,18 +354,38 @@ a {
   touch-action: none;
   transition: width 0.1s, height 0.1s;
 }
-/* extend the tap target to ~27px without growing the visible ring */
+/* extend the tap target without growing the visible mark */
 .pin::after {
   content: "";
   position: absolute;
   inset: -6px;
-  border-radius: 50%;
 }
 .pin__dot {
   width: 3px;
   height: 3px;
   border-radius: 50%;
   background: var(--pin-color, var(--blueprint));
+}
+
+.pin--glyph {
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  border-width: 2px;
+  background: var(--sheet);
+  overflow: hidden;
+}
+.pin__glyph {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 1px;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.pin--glyph:hover {
+  width: 30px;
+  height: 30px;
 }
 /* label is a drawing callout, revealed on hover / selection */
 .pin__label {
