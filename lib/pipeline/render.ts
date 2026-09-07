@@ -120,15 +120,25 @@ export async function buildDzi(
   return { descriptor, tiles, tileSize, overlap, width, height };
 }
 
-/** crop a device-space box out of the rendered page into its own canvas */
-export function cropRegion(
+export interface CropMeta {
+  canvas: HTMLCanvasElement;
+  /** device-space (PDF point) origin of the crop's top-left */
+  originDevice: { x: number; y: number };
+  /** crop canvas pixels per device point */
+  scale: number;
+}
+
+/** crop a device-space box out of the rendered page, keeping the coord mapping */
+export function cropRegionMeta(
   rendered: RenderedPage,
   box: BBox,
   { pad = 0, upscale = 1 }: { pad?: number; upscale?: number } = {},
-): HTMLCanvasElement | null {
+): CropMeta | null {
   const s = rendered.scale;
-  const x = Math.max(0, (box.x0 - pad) * s);
-  const y = Math.max(0, (box.y0 - pad) * s);
+  const dx0 = Math.max(0, box.x0 - pad);
+  const dy0 = Math.max(0, box.y0 - pad);
+  const x = dx0 * s;
+  const y = dy0 * s;
   const w = Math.min(rendered.width - x, (box.x1 - box.x0 + 2 * pad) * s);
   const h = Math.min(rendered.height - y, (box.y1 - box.y0 + 2 * pad) * s);
   if (w < 1 || h < 1) return null;
@@ -138,7 +148,62 @@ export function cropRegion(
   ctx.fillRect(0, 0, c.width, c.height);
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(rendered.canvas, x, y, w, h, 0, 0, c.width, c.height);
-  return c;
+  return { canvas: c, originDevice: { x: dx0, y: dy0 }, scale: s * upscale };
+}
+
+/** crop a device-space box out of the rendered page into its own canvas */
+export function cropRegion(
+  rendered: RenderedPage,
+  box: BBox,
+  opts: { pad?: number; upscale?: number } = {},
+): HTMLCanvasElement | null {
+  return cropRegionMeta(rendered, box, opts)?.canvas ?? null;
+}
+
+/**
+ * Threshold light CAD linework to pure black/white and optionally fatten the
+ * strokes — Tesseract can't read hairline outlined text without this.
+ * Mutates and returns the canvas.
+ */
+export function binarize(
+  canvas: HTMLCanvasElement,
+  { threshold = 235, thicken = 1 }: { threshold?: number; thicken?: number } = {},
+): HTMLCanvasElement {
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+
+  let ink = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    ink[p] = lum < threshold ? 1 : 0;
+  }
+  for (let t = 0; t < thicken; t++) {
+    const next = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let on = 0;
+        for (let dy = -1; dy <= 1 && !on; dy++) {
+          for (let dx = -1; dx <= 1 && !on; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h && ink[ny * w + nx]) on = 1;
+          }
+        }
+        next[y * w + x] = on;
+      }
+    }
+    ink = next;
+  }
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const v = ink[p] ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 /** crop each legend glyph out of the rendered page (device coords × scale) */

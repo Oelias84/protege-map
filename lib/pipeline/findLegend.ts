@@ -75,26 +75,54 @@ export interface FindLegendOptions {
   title?: BBox | null;
 }
 
-export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): LegendGuess | null {
+/** one scored candidate column of repeated marks */
+export interface LegendColumn {
+  colX0: number;
+  colX1: number;
+  cx: number;
+  y0: number; // top of first mark
+  y1: number; // top of last mark
+  rowCount: number;
+  score: number;
+}
+
+/**
+ * Score vertical columns of small, evenly-spaced repeated marks.
+ *
+ * - "strict" (default): coloured symbols only, needs a few distinct colours and
+ *   8+ rows. High precision — this is what auto-pick trusts.
+ * - "loose": also accepts single-colour / black line symbols and 6+ rows. Too
+ *   noisy to auto-pick (title blocks, schedules score high), but useful as a
+ *   candidate list to confirm with OCR of the "מקרא" title.
+ */
+export function legendColumnCandidates(
+  page: PageVectors,
+  opts: FindLegendOptions & { mode?: "strict" | "loose" } = {},
+): LegendColumn[] {
   const { width: W, height: H } = page;
   const title = opts.title ?? null;
+  const loose = opts.mode === "loose";
   const [titleCx] = title ? bboxCenter(title) : [NaN];
+  const minRows = loose ? 6 : 8;
 
-  // coloured, glyph-sized seed points
-  const seeds = page.paths
-    .filter((p) => {
-      const w = p.bbox.x1 - p.bbox.x0;
-      const h = p.bbox.y1 - p.bbox.y0;
-      if (w < 3 || h < 3 || w > 28 || h > 28) return false;
-      const c = p.fill ?? p.stroke ?? null;
-      return c && !isNeutral(c) && !isRed(c);
-    })
-    .map((p) => {
-      const [x, y] = bboxCenter(p.bbox);
-      return { x, y, c: quant((p.fill ?? p.stroke) as RGB) };
-    })
-    .sort((a, b) => a.x - b.x);
-  if (seeds.length < 12) return null;
+  const seeds: { x: number; y: number; c: string }[] = [];
+  // spatial index of small outlined-text-ish marks, bucketed by (x/24, y/6)
+  const textGrid = new Set<string>();
+  const gkey = (x: number, y: number) => `${Math.floor(x / 24)},${Math.floor(y / 6)}`;
+
+  for (const p of page.paths) {
+    const w = p.bbox.x1 - p.bbox.x0;
+    const h = p.bbox.y1 - p.bbox.y0;
+    if (w < 1 || h < 1) continue;
+    const c = p.fill ?? p.stroke ?? null;
+    const [x, y] = bboxCenter(p.bbox);
+    if (w <= 26 && h <= 14 && isNeutral(c)) textGrid.add(gkey(x, y));
+    if (w < 3 || h < 3 || w > 28 || h > 28 || isRed(c)) continue;
+    if (!loose && !(c && !isNeutral(c))) continue; // strict: coloured only
+    seeds.push({ x, y, c: c && !isNeutral(c) ? quant(c) : "" });
+  }
+  seeds.sort((a, b) => a.x - b.x);
+  if (seeds.length < 10) return [];
 
   // 1-D cluster on x (a glyph column is ~15-40 px wide)
   const cols: (typeof seeds)[] = [];
@@ -110,30 +138,27 @@ export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): Leg
   }
   if (cur.length) cols.push(cur);
 
-  let best: { score: number; pts: typeof seeds; rows: number } | null = null;
-  let second = 0;
-
+  const out: LegendColumn[] = [];
   for (const pts of cols) {
-    if (pts.length < 8) continue;
+    if (pts.length < minRows) continue;
     const ys = [...pts].sort((a, b) => a.y - b.y);
 
     const rowYs: number[] = [];
     for (const p of ys) if (!rowYs.length || p.y - rowYs[rowYs.length - 1] > 9) rowYs.push(p.y);
     const rows = rowYs.length;
-    if (rows < 8) continue;
+    if (rows < minRows) continue;
 
     const gaps = rowYs.slice(1).map((y, i) => y - rowYs[i]).filter((g) => g > 4);
     const meanGap = gaps.reduce((a, b) => a + b, 0) / (gaps.length || 1);
     const cv =
       Math.sqrt(gaps.reduce((a, g) => a + (g - meanGap) ** 2, 0) / (gaps.length || 1)) /
       (meanGap || 1);
-    // a faint/tiny glyph row can be missed — estimate the true count from the span
     const medGap = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] || meanGap;
     const spanRows = medGap > 4 ? Math.round((rowYs[rowYs.length - 1] - rowYs[0]) / medGap) + 1 : rows;
     const rowCount = Math.max(rows, spanRows);
 
-    const colors = new Set(pts.map((p) => p.c)).size;
-    if (colors < 3) continue;
+    const colors = new Set(pts.map((p) => p.c).filter(Boolean)).size;
+    if (!loose && colors < 3) continue; // strict: a real legend shows several symbol colours
 
     const xs = pts.map((p) => p.x);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
@@ -141,36 +166,56 @@ export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): Leg
     const y0 = ys[0].y;
     const y1 = ys[ys.length - 1].y;
 
+    // does each row have outlined text beside it? (legend rows do; device clusters don't)
+    let rowsWithText = 0;
+    for (const ry of rowYs) {
+      let has = false;
+      for (let dx = 24; dx <= 320 && !has; dx += 24) {
+        if (textGrid.has(gkey(cx - dx, ry)) || textGrid.has(gkey(cx + dx, ry))) has = true;
+      }
+      if (has) rowsWithText++;
+    }
+    const textRatio = rowsWithText / rowYs.length;
+
     const fcx = cx / W;
     const fcy = (y0 + y1) / 2 / H;
-    // legends usually sit in a panel/margin — a weak prior, not a position lock
-    const marginBonus = (fcx > 0.7 || fcx < 0.16 ? 1.35 : 1) * (fcy > 0.6 || fcy < 0.18 ? 1.2 : 1);
+    const marginBonus = (fcx > 0.7 || fcx < 0.16 ? 1.3 : 1) * (fcy > 0.6 || fcy < 0.18 ? 1.15 : 1);
 
-    // if the text layer gave us the title, strongly favour the column beneath it
     let titleBonus = 1;
     if (title) {
-      const alignsX = Math.abs(cx - titleCx) < 220;
-      const startsBelow = y0 >= title.y0 - 12 && y0 <= title.y1 + 90;
+      const alignsX = Math.abs(cx - titleCx) < 240;
+      const startsBelow = y0 >= title.y0 - 12 && y0 <= title.y1 + 100;
       if (alignsX && startsBelow) titleBonus = 6;
       else if (alignsX || startsBelow) titleBonus = 2;
     }
 
+    const colourTerm = loose ? 1 + Math.pow(colors, 0.7) : Math.pow(colors, 1.3);
     const score =
-      (rowCount * Math.pow(colors, 1.3) * marginBonus * titleBonus * Math.min(1, (y1 - y0) / 180)) /
+      (rowCount *
+        colourTerm *
+        (0.5 + textRatio) *
+        marginBonus *
+        titleBonus *
+        Math.min(1, (y1 - y0) / 170)) /
       (1 + cv * 2) /
       (1 + xSpread / 25);
 
-    if (!best || score > best.score) {
-      second = best?.score ?? 0;
-      best = { score, pts, rows: rowCount };
-    } else if (score > second) {
-      second = score;
-    }
+    out.push({ colX0: Math.min(...xs), colX1: Math.max(...xs), cx, y0, y1, rowCount, score });
   }
+  return out.sort((a, b) => b.score - a.score);
+}
 
-  // no convincing glyph column — but if the text layer found the title, derive a
-  // rect straight from it (covers legends drawn with plain black line symbols)
-  if (!best || best.score < 8) {
+export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): LegendGuess | null {
+  const { width: W, height: H } = page;
+  const title = opts.title ?? null;
+  const [titleCx] = title ? bboxCenter(title) : [NaN];
+
+  const cands = legendColumnCandidates(page, opts);
+  const best = cands[0];
+  const second = cands[1]?.score ?? 0;
+
+  // no convincing column — but if a title was found, derive a rect straight from it
+  if (!best || best.score < 4) {
     if (!title) return null;
     const th = title.y1 - title.y0 || 12;
     return {
@@ -186,13 +231,10 @@ export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): Leg
     };
   }
 
-  // build the rect: glyph column + the text column beside it
-  const xs = best.pts.map((p) => p.x);
-  const ys = best.pts.map((p) => p.y);
-  const colX0 = Math.min(...xs);
-  const colX1 = Math.max(...xs);
-  const y0 = Math.min(...ys) - 28;
-  const y1 = Math.max(...ys) + 34;
+  const colX0 = best.colX0;
+  const colX1 = best.colX1;
+  const y0 = best.y0 - 28;
+  const y1 = best.y1 + 34;
 
   // Which side holds the description text? Hebrew legends put text on the LEFT of
   // the glyph, so default there; only flip if the strip immediately right of the
@@ -227,7 +269,7 @@ export function findLegend(page: PageVectors, opts: FindLegendOptions = {}): Leg
   return {
     rect,
     separation: best.score / (second || 1),
-    rows: best.rows,
+    rows: best.rowCount,
     via: title ? "text" : "geometry",
   };
 }

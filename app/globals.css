@@ -352,7 +352,6 @@ a {
   box-shadow: 0 0 0 1px rgba(252, 251, 248, 0.9);
   cursor: pointer;
   touch-action: none;
-  transition: width 0.1s, height 0.1s;
 }
 /* extend the tap target without growing the visible mark */
 .pin::after {
@@ -383,10 +382,6 @@ a {
   -webkit-user-drag: none;
   user-select: none;
 }
-.pin--glyph:hover {
-  width: 30px;
-  height: 30px;
-}
 /* label is a drawing callout, revealed on hover / selection */
 .pin__label {
   position: absolute;
@@ -415,8 +410,7 @@ a {
 }
 .pin:hover {
   z-index: 3;
-  width: 22px;
-  height: 22px;
+  box-shadow: 0 0 0 1px rgba(252, 251, 248, 0.9), 0 0 0 3px var(--pin-color, var(--blueprint));
 }
 .pin:hover .pin__label,
 .pin--selected .pin__label {

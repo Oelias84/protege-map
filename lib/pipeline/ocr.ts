@@ -8,7 +8,7 @@
  */
 
 import { cropRegion, type RenderedPage } from "./render";
-import type { LegendRow } from "./types";
+import type { BBox, LegendRow } from "./types";
 
 export interface OcrOptions {
   /** tesseract language(s); "heb" or "heb+eng" for model numbers */
@@ -50,6 +50,120 @@ export async function ocrLegendLabels(
     await worker.terminate();
   }
   return out;
+}
+
+/* ---------------------------- word search ---------------------------- */
+
+export interface WordHit {
+  text: string;
+  /** bbox in the OCR canvas's own pixel space */
+  bbox: BBox;
+  confidence: number;
+}
+
+const wordKey = (s: string) => s.trim().toLowerCase().replace(/[^֐-׿a-z]/g, "");
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** OCR of hairline outlined titles is imperfect ("מקרא" → "מכרא"); allow near-hits */
+function fuzzyMatch(token: string, needleKey: string): boolean {
+  if (token.length < 3) return false;
+  if (token === needleKey || token.includes(needleKey) || needleKey.includes(token)) return true;
+  const budget = needleKey.length <= 4 ? 1 : 2;
+  return levenshtein(token, needleKey) <= budget;
+}
+
+/**
+ * Find where given words appear as *pixels* on a rendered canvas — for titles
+ * like "מקרא" that CAD exports outline to curves (no text layer to search).
+ * Tests each word and its reverse (some exports flip Hebrew glyph order).
+ */
+export async function ocrFindWords(
+  canvas: HTMLCanvasElement,
+  needles: string[],
+  { lang = "heb+eng", psm = "11" }: { lang?: string; psm?: string } = {},
+): Promise<WordHit[]> {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker(lang);
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: psm as never });
+    const { data } = await worker.recognize(canvas, {}, { blocks: true });
+
+    const want = new Set<string>();
+    for (const n of needles) {
+      want.add(wordKey(n));
+      want.add(wordKey([...n].reverse().join("")));
+    }
+
+    type W = { text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } };
+    // group words into lines so we can rejoin ones split by wide letter-spacing
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blocks = (data as any).blocks ?? [];
+    const lines: W[][] = blocks.length
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        blocks.flatMap((b: any) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (b.paragraphs ?? []).flatMap((p: any) => (p.lines ?? []).map((l: any) => l.words ?? [])),
+        )
+      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        [((data as any).words as W[]) ?? []];
+
+    const hits: WordHit[] = [];
+    for (const line of lines) {
+      for (let i = 0; i < line.length; i++) {
+        for (let span = 1; span <= 3 && i + span <= line.length; span++) {
+          const win = line.slice(i, i + span);
+          const k = wordKey(win.map((w) => w.text).join(""));
+          if (k.length < 3) continue;
+          if (![...want].some((t) => fuzzyMatch(k, t))) continue;
+          hits.push({
+            text: win.map((w) => w.text).join(" "),
+            confidence: win.reduce((s, w) => s + w.confidence, 0) / win.length,
+            bbox: {
+              x0: Math.min(...win.map((w) => w.bbox.x0)),
+              y0: Math.min(...win.map((w) => w.bbox.y0)),
+              x1: Math.max(...win.map((w) => w.bbox.x1)),
+              y1: Math.max(...win.map((w) => w.bbox.y1)),
+            },
+          });
+        }
+      }
+    }
+    return hits.sort((a, b) => b.confidence - a.confidence);
+  } finally {
+    await worker.terminate();
+  }
+}
+
+/** map a bbox from a crop's pixel space back to device space (PDF points) */
+export function ocrBoxToDevice(
+  hit: BBox,
+  crop: { originDevice: { x: number; y: number }; scale: number },
+): BBox {
+  return {
+    x0: crop.originDevice.x + hit.x0 / crop.scale,
+    y0: crop.originDevice.y + hit.y0 / crop.scale,
+    x1: crop.originDevice.x + hit.x1 / crop.scale,
+    y1: crop.originDevice.y + hit.y1 / crop.scale,
+  };
 }
 
 /** collapse whitespace, drop the "– N" separator noise, keep Hebrew + Latin + digits */

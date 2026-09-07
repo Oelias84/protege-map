@@ -7,14 +7,72 @@
  * pdf.js is the only heavy dependency. Gate the caller to desktop.
  */
 
-import { buildDzi, cropGlyphs, renderPage, tileKey, type Tile } from "./render";
+import { binarize, buildDzi, cropGlyphs, cropRegionMeta, renderPage, tileKey, type Tile } from "./render";
 import { extractVectors } from "./vectorExtract";
 import { segmentLegend } from "./legend";
 import { buildSignature } from "./signature";
 import { buildTemplates, detectPlacements } from "./detect";
-import { ocrLegendLabels } from "./ocr";
-import { findLegend, findLegendTitle } from "./findLegend";
-import type { BBox, PlacementCandidate, SymbolDef } from "./types";
+import { ocrBoxToDevice, ocrFindWords, ocrLegendLabels } from "./ocr";
+import { findLegend, findLegendTitle, legendColumnCandidates } from "./findLegend";
+import type { BBox, PageVectors, PlacementCandidate, SymbolDef } from "./types";
+
+const LEGEND_TITLE_WORDS = ["מקרא", "מקרא הסימנים", "מקרא סימנים", "רשימת סמלים", "legend", "key"];
+
+/**
+ * Locate the legend, cheapest signal first:
+ *   1. real text layer for "מקרא"
+ *   2. geometry — a column of evenly-spaced symbols that clearly beats the rest
+ *   3. OCR the title band above each top geometry candidate for "מקרא"
+ *      (binarised + thickened — hairline outlined text is otherwise unreadable)
+ *   4. best geometry guess, weak, or null
+ * `onStep` reports the slow OCR step to the UI.
+ */
+async function locateLegend(
+  pv: PageVectors,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pdfPage: any,
+  onStep?: (msg: string) => void,
+): Promise<ReturnType<typeof findLegend>> {
+  // 1. real text layer
+  const tc = await pdfPage.getTextContent().catch(() => null);
+  const textTitle = tc ? findLegendTitle(tc.items as never[], pv.height) : null;
+  if (textTitle) return findLegend(pv, { title: textTitle });
+
+  // 2. geometry — accept a clear win outright
+  const geom = findLegend(pv);
+  if (geom && geom.separation >= 2.2) return geom;
+
+  // 3. OCR the title band above each promising column (loose scan → confirm by word)
+  const cands = legendColumnCandidates(pv, { mode: "loose" }).slice(0, 5);
+  if (cands.length) {
+    try {
+      onStep?.('reading the sheet for "מקרא"…');
+      const raster = await renderPage(pdfPage, 190);
+      for (const c of cands) {
+        // title sits just above the first symbol, spanning the row width
+        const band: BBox = {
+          x0: c.cx - 200,
+          x1: c.cx + 200,
+          y0: c.y0 - 44,
+          y1: c.y0 + 10,
+        };
+        const crop = cropRegionMeta(raster, band, { pad: 2, upscale: 2.2 });
+        if (!crop) continue;
+        binarize(crop.canvas, { threshold: 236, thicken: 1 });
+        const hits = await ocrFindWords(crop.canvas, LEGEND_TITLE_WORDS, { psm: "6" });
+        if (hits.length) {
+          const title = ocrBoxToDevice(hits[0].bbox, crop);
+          return findLegend(pv, { title });
+        }
+      }
+    } catch {
+      /* OCR is best-effort */
+    }
+  }
+
+  // 4. nothing confident — best geometry guess (may be weak) or null
+  return geom;
+}
 
 /** operator-supplied metadata for each legend row, in row order */
 export interface SymbolMeta {
@@ -40,6 +98,8 @@ export interface IngestOptions {
   /** OCR the legend description text into button names (default true when no labels given) */
   ocr?: boolean;
   onOcrProgress?: (done: number, total: number) => void;
+  /** coarse status for slow steps (legend OCR, etc.) */
+  onStep?: (msg: string) => void;
 }
 
 export interface PlanDraft {
@@ -78,12 +138,7 @@ export async function ingestPdf(
 
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
 
-  let auto = null as ReturnType<typeof findLegend>;
-  if (!opts.legendRect) {
-    const tc = await page.getTextContent().catch(() => null);
-    const title = tc ? findLegendTitle(tc.items as never[], pv.height) : null;
-    auto = findLegend(pv, { title });
-  }
+  const auto = opts.legendRect ? null : await locateLegend(pv, page, opts.onStep);
   const legendRect = opts.legendRect ?? auto?.rect;
   if (!legendRect) {
     throw new Error(
@@ -168,12 +223,14 @@ export async function ingestPdf(
 export { tileKey };
 
 /**
- * Cheap pre-pass for the upload UI: extract vectors and auto-locate the legend so
- * the box can be shown pre-drawn. Returns null if nothing convincing was found.
+ * Pre-pass for the upload UI: extract vectors and auto-locate the legend (text
+ * layer → geometry → OCR the sheet for "מקרא") so the box can be pre-drawn or
+ * ingest can start straight away. `onStep` reports the slow OCR fallback.
  */
 export async function detectLegendRect(
   file: File,
   pdfjs: Pdfjs,
+  onStep?: (msg: string) => void,
 ): Promise<{
   rect: BBox;
   pageWidth: number;
@@ -185,9 +242,7 @@ export async function detectLegendRect(
   const page = await doc.getPage(1);
   const viewport = page.getViewport({ scale: 1 });
   const pv = extractVectors(await page.getOperatorList(), pdfjs.OPS, viewport);
-  const tc = await page.getTextContent().catch(() => null);
-  const title = tc ? findLegendTitle(tc.items as never[], pv.height) : null;
-  const guess = findLegend(pv, { title });
+  const guess = await locateLegend(pv, page, onStep);
   return guess
     ? {
         rect: guess.rect,

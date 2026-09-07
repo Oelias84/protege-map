@@ -46,10 +46,12 @@ export default function UploadPage() {
     await page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
     setPreviewUrl(canvas.toDataURL("image/png"));
     setPhase("legend");
+    setStep("locating the מקרא legend…");
 
     // auto-locate the legend; if we're confident, ingest straight away
     try {
-      const guess = await detectLegendRect(f, pdfjs);
+      const guess = await detectLegendRect(f, pdfjs, setStep);
+      setStep("");
       if (guess) {
         setBox({
           x0: guess.rect.x0 / guess.pageWidth,
@@ -58,8 +60,8 @@ export default function UploadPage() {
           y1: guess.rect.y1 / guess.pageHeight,
         });
         setAutoFound(true);
-        // a text hit on "מקרא", or a geometry column that clearly beats the rest
-        if (guess.via === "text" || guess.separation >= 3) {
+        // a text/OCR hit on "מקרא", or a geometry column that beats the rest
+        if (guess.via === "text" || guess.separation >= 2.2) {
           run(f, guess.rect);
           return;
         }
@@ -80,14 +82,17 @@ export default function UploadPage() {
     };
   };
 
+  const movedRef = useRef(false);
+
   function onDown(e: React.PointerEvent) {
     const { fx, fy } = frac(e);
     dragRef.current = { x: fx, y: fy };
-    setBox(null);
+    movedRef.current = false;
   }
   function onMove(e: React.PointerEvent) {
     if (!dragRef.current) return;
     const { fx, fy } = frac(e);
+    if (Math.hypot(fx - dragRef.current.x, fy - dragRef.current.y) > 0.01) movedRef.current = true;
     setBox({
       x0: Math.min(dragRef.current.x, fx),
       y0: Math.min(dragRef.current.y, fy),
@@ -95,9 +100,22 @@ export default function UploadPage() {
       y1: Math.max(dragRef.current.y, fy),
     });
   }
-  const onUp = () => {
+  function onUp(e: React.PointerEvent) {
+    // a click (no drag) drops a default-sized box centred on the point —
+    // "the legend is here", nudge a corner if it's slightly off
+    if (dragRef.current && !movedRef.current) {
+      const { fx, fy } = frac(e);
+      const halfW = 190 / pageSize.w; // ~380pt wide, text + glyph column
+      const halfH = 230 / pageSize.h;
+      setBox({
+        x0: Math.max(0, fx - halfW),
+        y0: Math.max(0, fy - halfH),
+        x1: Math.min(1, fx + halfW),
+        y1: Math.min(1, fy + halfH),
+      });
+    }
     dragRef.current = null;
-  };
+  }
 
   /** legend box in device space (PDF points) */
   const deviceBox = (): BBox | null =>
@@ -141,6 +159,7 @@ export default function UploadPage() {
         legendRect,
         symbolMeta: parseMeta(), // undefined => a symbol per legend row, auto
         excludeRects: [legendRect],
+        onStep: setStep,
         onOcrProgress: (d, t) => {
           setStep(`reading legend labels (OCR) ${d}/${t}…`);
           setProgress(Math.round((d / t) * 100));
@@ -184,18 +203,18 @@ export default function UploadPage() {
 
       {phase === "legend" && previewUrl && (
         <>
-          <p>
-            {autoFound === null && "Looking for the מקרא legend…"}
+          <p aria-live="polite">
+            {autoFound === null && (step || "Looking for the מקרא legend…")}
             {autoFound === true && (
               <>
-                Found a likely <strong>מקרא</strong> legend but wasn&apos;t certain — check the blue
-                box, adjust if it&apos;s off, then ingest.
+                Found a likely <strong>מקרא</strong> legend — check the blue box, nudge a corner if
+                it&apos;s off, then ingest.
               </>
             )}
             {autoFound === false && (
               <>
-                Couldn&apos;t locate the legend automatically — drag a box around the{" "}
-                <strong>מקרא</strong> column (the row of small symbols) yourself.
+                Couldn&apos;t find it automatically. <strong>Click once on the מקרא</strong> (the
+                column of small symbols) to drop a box there, or drag to draw one.
               </>
             )}
           </p>
